@@ -27,4 +27,5 @@ public class OrderZKController {
         String ret = restTemplate.getForObject(INVOKE_URL + "/payment/zk", String.class);
         return ret;
     }
+
 }

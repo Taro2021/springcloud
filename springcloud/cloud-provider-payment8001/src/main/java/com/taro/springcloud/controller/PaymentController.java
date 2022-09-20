@@ -51,7 +51,7 @@ public class PaymentController {
         Payment payment = paymentService.getPaymentById(id);
         log.info("{} id 的查询结果： {}", id, payment);
         if(payment != null) {
-            return new CommonResult(200, "查询成功", payment);
+            return new CommonResult(200, "查询成功" + serverPort, payment);
         }else {
             return new CommonResult(404, "查询失败");
         }
@@ -70,5 +70,10 @@ public class PaymentController {
             log.info(instance.getInstanceId() + "\t" + instance.getHost() + "\t" + instance.getPort() + "\t" + instance.getUri());
         }
         return this.discoveryClient;
+    }
+
+    @GetMapping("/lb")
+    public String getServerPort() {
+        return serverPort;
     }
 }
