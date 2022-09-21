@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @Slf4j
-@RequestMapping("/payment/hystrix")
+@RequestMapping("/payment")
 public class PaymentController {
 
     @Autowired
@@ -27,7 +27,7 @@ public class PaymentController {
     @Value("${server.port")
     private String serverPort;
 
-    @GetMapping("/ok/{id}")
+    @GetMapping("/hystrix/ok/{id}")
     public String getPayment_OK(@PathVariable("id") Long id) {
         String ret = paymentService.getPayment_OK(id);
         log.info("msg: {}", ret);
@@ -35,10 +35,18 @@ public class PaymentController {
     }
 
 
-    @GetMapping("/timeout/{id}")
+    @GetMapping("/hystrix/timeout/{id}")
     public String getPaymentTimeout(@PathVariable("id") Long id){
         String ret = paymentService.getPayment_TimeOut(id);
         log.info("msg: {}", ret);
         return ret;
+    }
+
+    //===服务熔断
+    @GetMapping("/circuit/{id}")
+    public String paymentCircuitBreaker(@PathVariable("id") Integer id){
+        String result = paymentService.paymentCircuitBreaker(id);
+        log.info("result: {}", result);
+        return result;
     }
 }

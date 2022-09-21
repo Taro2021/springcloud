@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/consumer/payment")
 @Slf4j
-//@DefaultProperties(defaultFallback = "payment_Global_FallBack")
+// @DefaultProperties(defaultFallback = "payment_Global_FallBack")
 public class PaymentHystrixController {
 
     @Autowired
@@ -33,10 +33,10 @@ public class PaymentHystrixController {
     }
 
     @GetMapping("/timeout/{id}")
-    @HystrixCommand(fallbackMethod = "getPayment_TimeoutHandler", commandProperties = {
-            @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "3000")
-    })
-    //@HystrixCommand
+    // @HystrixCommand(fallbackMethod = "getPayment_TimeoutHandler", commandProperties = {
+    //         @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "3000")
+    // })
+    // @HystrixCommand
     public String getPayment_Timeout(@PathVariable("id") Long id) {
         String ret = paymentHystrixService.getPayment_TimeOut(id);
         log.info("msg:{}", ret);
@@ -47,7 +47,7 @@ public class PaymentHystrixController {
         return "支付服务繁忙";
     }
 
-    public String payment_Global_FallBack(@PathVariable("id") Long id){
+    public String payment_Global_FallBack(){
         return "global_fallback";
     }
 }
