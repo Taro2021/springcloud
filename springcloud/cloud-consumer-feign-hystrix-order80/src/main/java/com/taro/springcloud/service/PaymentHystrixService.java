@@ -13,6 +13,6 @@ public interface PaymentHystrixService {
     String getPayment_OK(@PathVariable("id") Long id);
 
     @GetMapping("/payment/hystrix/timeout/{id}")
-    String getPayment_Timeout(@PathVariable("id") Long id);
+    String getPayment_TimeOut(@PathVariable("id") Long id);
 
 }

@@ -1,5 +1,6 @@
 package com.taro.springcloud.controller;
 
+import com.netflix.hystrix.contrib.javanica.annotation.DefaultProperties;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixCommand;
 import com.netflix.hystrix.contrib.javanica.annotation.HystrixProperty;
 import com.taro.springcloud.service.PaymentHystrixService;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/consumer/payment")
 @Slf4j
+//@DefaultProperties(defaultFallback = "payment_Global_FallBack")
 public class PaymentHystrixController {
 
     @Autowired
@@ -34,11 +36,18 @@ public class PaymentHystrixController {
     @HystrixCommand(fallbackMethod = "getPayment_TimeoutHandler", commandProperties = {
             @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "3000")
     })
+    //@HystrixCommand
     public String getPayment_Timeout(@PathVariable("id") Long id) {
-        return paymentHystrixService.getPayment_Timeout(id);
+        String ret = paymentHystrixService.getPayment_TimeOut(id);
+        log.info("msg:{}", ret);
+        return ret;
     }
 
     public String getPayment_TimeoutHandler(@PathVariable("id") Long id){
         return "支付服务繁忙";
+    }
+
+    public String payment_Global_FallBack(@PathVariable("id") Long id){
+        return "global_fallback";
     }
 }
