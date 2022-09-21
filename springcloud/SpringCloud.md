@@ -720,7 +720,7 @@ windows 开发者模式启动 `.\consul agent -dev`
 
 1. 新建模块
 
-2. pom
+2.  pom
 
    ```xml
    <?xml version="1.0" encoding="UTF-8"?>
@@ -791,121 +791,476 @@ windows 开发者模式启动 `.\consul agent -dev`
    </project>
    ```
 
-3. yml
-
-   ```yml
-   server:
-     port: 8006
-   spring:
-     application:
-       name: consul-provider-payment
-   ##consul 注册中心
-     cloud:
-       consul:
-         host: localhost
-         port: 8500
-         discovery:
-           service-name: ${spring.application.name}
-   ```
-
-4. 主启动类
-
-   ```java
-   @SpringBootApplication
-   @EnableDiscoveryClient
-   public class PaymentMain8006 {
    
-       public static void main(String[] args) {
-           SpringApplication.run(PaymentMain8006.class, args);
-       }
-   }
-   ```
 
-5. controller
+# Ribbon 服务调用
 
-   ```java
-   @RestController
-   @Slf4j
-   @RequestMapping("/payment")
-   public class PaymentController {
-   
-       @Value("${server.port}")
-       private String serverPort;
-   
-       @RequestMapping("/consul")
-       public String paymentConsul(){
-           return "springcloud with consul: " + serverPort + "\t" + UUID.randomUUID();
-       }
-   }
-   ```
+​	Ribbon + RestTemplete
 
+​	Ribbon 组件 eureka 组件自带，不需要自己额外引入
 
+​	Ribbon 负载均衡的核心组件，IRule 通过它来选择使用哪种负载均衡算法，默认轮询算法
 
-# CAP理论
+​	自带的算法有：
 
-C:Consistency(强一致性)
+![image-20220920102622466](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220920102622466.png)
 
-A:Availability(可用性)
+## 自定义Ribbon负载均衡算法
 
-P:Partition tolerance(分区容错)
+​	Ribbon 的负载均衡是基于客户端的，所以我们对 Ribbon 负载均衡算法的自定义配置不能放在 `@ComponentScan` 所扫描的包及其子包下，不然自定义配置会被所有的模块的共享。`@SpringBootApplication` 是包含 `@ComponentScan`  的复合注解，所以需要在它的上级目录，新建一个包。
 
-CAP理论关注粒度是数据，而不是整体系统设计的策略
+![image-20220920103401644](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220920103401644.png)
 
-![image-20220918204441691](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220918204441691.png)
+**MySelfRule**
 
-![image-20220918205023798](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220918205023798.png)
+```java
+@Configuration
+public class MySelfRule {
 
+    @Bean
+    public IRule myRule(){
+        //指定负载均衡算法为随即算法
+        return new RandomRule();
+    }
+}
+```
 
+**在主启动类上添加 `@RibbonClient` 注解**
 
-# Ribbon 负载均衡服务调用
-
-​	是一套**客户端 负载均衡的工具**，ribbon本地负载均衡，在调用微服务接口时候，会在注册中心上获取注册信息服务列表之后缓存到 JVM 本地，从而在本地实现 RPC 远程服务调用技术。
-
-​	Ribbon : 负载均衡 + RestTemplete 调用
-
-​	Eureka 的客户端组件已经引入了 Ribbon 组件
-
-p37
+```java
+@SpringBootApplication(exclude= {DataSourceAutoConfiguration.class, DruidDataSourceAutoConfigure.class})
+@EnableEurekaClient
+//指明哪个微服务使用自定义的负载均衡算法
+@RibbonClient(name = "CLOUD-PAYMENT-SERVICE", configuration = MySelfRule.class)
+public class OrderMain80 {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderMain80.class, args);
+    }
+}
+```
 
 
 
+## 手写轮询算法
+
+核心 ： CAS + 自旋锁
+
+8001/8002 微服务的修改
+
+```java
+@GetMapping("/lb")
+public String getServerPort(){
+    return  serverPort;
+}
+```
+
+80 微服务
+
+接口
+
+```java
+public interface LoadBalancer {
+    ServiceInstance instance(List<ServiceInstance> serviceInstances);
+}
+```
+
+实现类
+
+```java
+@Component
+public class MyLBImpl implements LoadBalancer{
+
+    private AtomicInteger atomicInteger = new AtomicInteger(0);
+    @Override
+    public ServiceInstance instance(List<ServiceInstance> serviceInstances) {
+        int index = getAndIncrement(serviceInstances.size());
+        return serviceInstances.get(index);
+    }
+
+    //轮询获取下一个实例的索引
+    public final int getAndIncrement(int mod){
+        //自旋锁
+        for(;;) {
+            int current = this.atomicInteger.get();
+            int next = current == Integer.MAX_VALUE ? 0 : (current + 1) % mod;
+            //CAS
+            if(atomicInteger.compareAndSet(current, next)) {
+                return next;
+            }
+        }
+    }
+}
+```
+
+调用自己的轮询算法
+
+```java
+@Autowired
+private DiscoveryClient discoveryClient;
+
+@Autowired
+private LoadBalancer myLB;
+
+@GetMapping("/lb")
+public String getPaymentLB(){
+    List<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+    if(instances == null || instances.size() == 0) {
+        return null;
+    }
+    URI uri = myLB.instance(instances).getUri();
+    return restTemplate.getForObject(uri + "/payment/lb", String.class);
+}
+```
 
 
 
+# OpenFeign 服务调用
+
+![image-20220920215320063](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220920215320063.png)
+
+OpenFeign 也自带了 Ribbon 负载均衡组件，同样是客户端组件
+
+替代了 Ribbon + RestTempelete
+
+微服务调用接口+@FeignClient
+
+```java
+@SpringBootApplication
+@EnableFeignClients
+public class OrderFeignMain80 {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderFeignMain80.class, args);
+    }
+}
+```
+
+客户端 service
+
+```java
+@Service
+@FeignClient("CLOUD-PAYMENT-SERVICE")
+public interface PaymentFeignService {
+
+    @GetMapping("/payment/get/{id}")
+    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id);
+}
+```
+
+Controller
+
+```java
+@RestController
+@RequestMapping("/consumer/payment")
+public class OrderFeignController {
+
+    @Autowired
+    private PaymentFeignService paymentFeignService;
+
+    @GetMapping("/get/{id}")
+    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id){
+        return paymentFeignService.getPaymentById(id);
+    }
+}
+```
+
+​	OpenFeign 客户端默认只等待一秒，服务端超过一秒未响应就返回报错。所以需要开启超时控制。
+
+​	yml 中配置开启超时控制
+
+```yml
+ribbon:
+  ReadTimeout:  5000
+  ConnectTimeout: 5000
+```
+
+## 日志增强
+
+![image-20220921130132712](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921130132712.png)
+
+在配置类中向 ioc 容器注入日志级别的对象
+
+```java
+@Configuration
+public class FeignConfig {
+
+    @Bean
+    Logger.Level loggerLevel(){
+        return Logger.Level.FULL;
+    }
+}
+```
+
+yml 配置文件中开启日志增强
+
+```yml
+logging:
+  level:
+    com.taro.springcloud.service.PaymentFeignService: debug
+```
 
 
 
+# Hystrix 服务降级
+
+![image-20220921131419786](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921131419786.png)
+
+https://github.com/Netflix/Hystrix/wiki/How-To-Use
+
+三个主要概念：
+
+- 服务降级 fallaback 服务器忙，请稍候再试，不让客户端等待并立刻返回一个友好提示，fallback
+- 服务熔断 break 类比保险丝达到最大服务访问后，直接拒绝访问，拉闸限电，然后调用服务降级的方法并返回友好提示
+- 服务限流 flowllimit 秒杀高并发等操作，严禁一窝蜂的过来拥挤，大家排队，一秒钟N个，有序进行
 
 
 
+编写超时服务，进行线程压力测试
+
+service
+
+```java
+@Service
+public class PaymentService {
+
+    //正常服务
+    public String getPayment_OK(Long id) {
+        return  "线程id：" + Thread.currentThread().getName() + ",  getPayment_OK 订单 id ：" + id.toString();
+    }
+
+    //超时服务
+    public String getPayment_TimeOut(Long id) {
+        try {
+            TimeUnit.SECONDS.sleep(3);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return  "线程id：" + Thread.currentThread().getName() + ",  getPayment_OK 订单 id ：" + id.toString();
+    }
+}
+```
+
+controller
+
+```java
+@RestController
+@Slf4j
+@RequestMapping("/payment/hystrix")
+public class PaymentController {
+
+    @Autowired
+    private PaymentService paymentService;
+
+    @Value("${server.port")
+    private String serverPort;
+
+    @GetMapping("/ok/{id}")
+    public String getPayment_OK(@PathVariable("id") Long id) {
+        String ret = paymentService.getPayment_OK(id);
+        log.info("msg: {}", ret);
+        return ret;
+    }
+
+    @GetMapping("/timeout/{id}")
+    public String getTimeout(@PathVariable("id") Long id) {
+        String ret = paymentService.getPayment_TimeOut(id);
+        log.info("msg: {}", ret);
+        return ret;
+    }
+}
+```
+
+Jmeter 并发测试 20000个请求去请求超时服务，此时正常服务的处理速度也被拖慢
 
 
 
+## 服务降级
+
+`@HystrixConmmand`
+
+### Provider 的降级
+
+​	服务的 provider 设置自身的调用的时间峰值，在峰值内可以正常运行，超过峰值需要有兜底的方法处理，作为服务降级的 fallback
+
+```java
+//超时服务，为超时服务提供降级方法
+@HystrixCommand(fallbackMethod = "getPayment_TimeOutHandler", commandProperties = {
+            @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "3000")
+    })
+public String getPayment_TimeOut(Long id) {
+    try {
+        TimeUnit.SECONDS.sleep(5);
+    } catch (InterruptedException e) {
+        e.printStackTrace();
+    }
+    return  "线程id：" + Thread.currentThread().getName() + ",  getPayment_OK 订单 id ：" + id.toString();
+}
+
+public String getPayment_TimeOutHandler(Long id) {
+    return  "线程id：" + Thread.currentThread().getName() + ",  getPayment_TimeOutHandler 订单 id ：" + id.toString();
+}
+```
+
+主启动类上激活 `@EnableCircuitBreaker`
 
 
 
+### Consumer 的降级
+
+yml 配置
+
+```yml
+feign:
+  hystrix:
+    enabled: true
+```
+
+！！！! 启用一个组件的功能不要忘了给主启动类加上 EnableXXX z 注解
+
+```java
+@SpringBootApplication
+@EnableFeignClients
+@EnableHystrix
+public class OrderFeignHystrixMain80 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(OrderFeignHystrixMain80.class, args);
+    }
+}
+```
+
+controller
+
+```java
+@GetMapping("/timeout/{id}")
+@HystrixCommand(fallbackMethod = "getPaymentTimeoutHandler", commandProperties = {
+    @HystrixProperty(name = "execution.isolation.thread.timeoutInMilliseconds",value = "3000")
+})
+public String getPaymentTimeout(@PathVariable("id") Long id) {
+    return paymentHystrixService.getPaymentTimeout(id);
+}
+
+public String getPaymentTimeoutHandler(@PathVariable("id") Long id){
+    return "支付服务繁忙";
+}
+```
 
 
 
+### 全局服务降级
+
+```java
+@RestController
+@RequestMapping("/consumer/payment")
+@Slf4j
+@DefaultProperties(defaultFallback = "payment_Global_FallBack")
+public class PaymentHystrixController {
+
+    @Autowired
+    private PaymentHystrixService paymentHystrixService;
+
+    @GetMapping("/timeout/{id}")
+    @HystrixCommand
+    public String getPayment_Timeout(@PathVariable("id") Long id) {
+        String ret = paymentHystrixService.getPayment_TimeOut(id);
+        log.info("msg:{}", ret);
+        return ret;
+    }
+
+    public String payment_Global_FallBack(){
+        return "global_fallback";
+    }
+}
+```
+
+服务降级与业务代码解耦
+
+service
+
+```java
+@Service
+@FeignClient(value = "CLOUD-HYSTRIX-PAYMENT", fallback = PaymentFallback.class) //配置我们自己编写的 fallback 类
+public interface PaymentHystrixService {
+
+    @GetMapping("/payment/hystrix/ok/{id}")
+    String getPayment_OK(@PathVariable("id") Long id);
+
+    @GetMapping("/payment/hystrix/timeout/{id}")
+    String getPayment_TimeOut(@PathVariable("id") Long id);
+
+}
+```
+
+FallbackService
+
+```java
+@Component
+public class PaymentFallback implements PaymentHystrixService{
+    @Override
+    public String getPayment_OK(Long id) {
+        return "PaymentFallback: getPayment_OK";
+    }
+
+    @Override
+    public String getPayment_TimeOut(Long id) {
+        return "PaymentFallback: getPayment_TimeOut";
+    }
+}
+```
 
 
 
+## 服务熔断
 
+![image-20220921222722440](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921222722440.png)
 
+![image-20220921222825155](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921222825155.png)
 
+service
 
+```java
+//服务熔断
+@HystrixCommand(fallbackMethod = "paymentCircuitBreaker_fallback",commandProperties = {
+    @HystrixProperty(name = "circuitBreaker.enabled",value = "true"),  //是否开启断路器
+    @HystrixProperty(name = "circuitBreaker.requestVolumeThreshold",value = "10"),   //请求次数
+    @HystrixProperty(name = "circuitBreaker.sleepWindowInMilliseconds",value = "10000"),  //时间范围
+    @HystrixProperty(name = "circuitBreaker.errorThresholdPercentage",value = "60"), //失败率达到多少后跳闸
+})
+public String paymentCircuitBreaker(@PathVariable("id") Integer id){
+    if (id < 0){
+        throw new RuntimeException("*****id 不能负数");
+    }
+    String serialNumber = IdUtil.simpleUUID();
 
+    return Thread.currentThread().getName()+"\t"+"调用成功,流水号："+serialNumber;
+}
+public String paymentCircuitBreaker_fallback(@PathVariable("id") Integer id){
+    return "id 不能负数，请稍候再试,(┬＿┬)/~~     id: " +id;
+}
+```
 
+controller
 
+```java
+//服务熔断
+@GetMapping("/circuit/{id}")
+public String paymentCircuitBreaker(@PathVariable("id") Integer id){
+    String result = paymentService.paymentCircuitBreaker(id);
+    log.info("result: {}", result);
+    return result;
+}
+```
 
+![image-20220921230228797](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921230228797.png)
 
+1. 请求达到熔断阈值 
+2. 错误率达到熔断阈值 
+3. 熔断机制打开 
+4. 当熔断机制打开的时候拒绝一切请求
+5. 一段时间后，熔断机制会进入半开状态，会放行单个请求，若这个请求失败，会回到熔断机制的打开状态，成功，则关闭熔断
 
+### 服务熔断的所有配置
 
-
-
-
-
-
+![image-20220921232644210](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921232644210.png)
 
 
 
