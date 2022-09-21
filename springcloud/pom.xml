@@ -8,7 +8,7 @@
   <artifactId>springcloud</artifactId>
   <version>1.0-SNAPSHOT</version>
   <modules>
-      <module>cloud-provide-payment8001</module>
+      <module>cloud-provider-payment8001</module>
       <module>cloud-consumer-order80</module>
       <module>cloud-api-commons</module>
       <!--<module>eureka-server</module>-->
@@ -19,7 +19,9 @@
       <module>cloud-consumerzk-order80</module>
     <module>cloud-providerconsul-payment8006</module>
     <module>cloud-consumerconsul-order80</module>
-      <module>cloud-feign-order80</module>
+      <module>cloud-consumerfeign-order80</module>
+      <module>cloud-hystrix-payment8001</module>
+      <module>cloud-consumer-feign-hystrix-order80</module>
   </modules>
   <packaging>pom</packaging>
 

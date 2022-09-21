@@ -8,3 +8,6 @@ eureka:
 feign:
   client:
     config: default.connectTimeout=50000
+logging:
+  level:
+    com.taro.springcloud.service.PaymentFeignService: debug
