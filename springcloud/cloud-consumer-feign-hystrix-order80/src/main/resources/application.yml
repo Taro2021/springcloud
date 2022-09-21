@@ -11,3 +11,7 @@ eureka:
 spring:
   application:
     name: cloud-consumer-feign-hystrix-order
+
+feign:
+  hystrix:
+    enabled: true
