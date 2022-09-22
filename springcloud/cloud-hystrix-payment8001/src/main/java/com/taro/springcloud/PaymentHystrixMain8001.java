@@ -38,6 +38,5 @@ public class PaymentHystrixMain8001 {
         return registrationBean;
     }
 
-
 }
 
