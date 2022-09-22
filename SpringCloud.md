@@ -1291,7 +1291,6 @@ public class HystrixDashBoardMain9001 {
      * 此配置是为了服务监控而配置，与服务容错本身无关，是 SpringCloud 升级后的坑
      * ServletRegistrationBean 因为 SpringBoot 的默认路径不是 "/hystrix.stream"，
      * 只要在自己的项目配置下面的servlet就可以
-  
      */
     @Bean
     public ServletRegistrationBean getServlet(){
@@ -1310,11 +1309,168 @@ http://localhost:9001/hystrix 访问监控页面
 
 
 
+# Gateway 服务网关
+
+https://cloud.spring.io/spring-cloud-static/spring-cloud-gateway/2.2.1.RELEASE/reference/html/
+
+三个主要部分：
+
+- Route 路由，路由是构建网关的基本模块，它由ID，目标URI，一系列的断言和过滤器组成，如果断言为true则匹配该路由
+- Predicate 断言，参考的是java8的 java.util.function.Predicate 开发人员可以匹配HTTP请求中的所有内容（例如请求头或请求参数），如果请求与断言相匹配则进行路由
+- Filter 过滤，指的是Spring框架中GatewayFilter的实例，使用过滤器，可以在请求被路由前或者之后对请求进行修改。
+
+核心逻辑：==逻辑转发 + 执行过滤器链==
 
 
 
+## Gateway 网关配置
+
+方式一：在 yml 中配置
+
+```yml
+server:
+  port: 9527
+
+spring:
+  application:
+    name: cloud-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: payment_routh #路由的ID，没有固定规则但要求唯一，建议配合服务名
+          uri: http://localhost:8001   #匹配后提供服务的路由地址
+          predicates:
+            - Path=/payment/get/**   #断言,路径相匹配的进行路由
+
+        - id: payment_routh2
+          uri: http://localhost:8001
+          predicates:
+            - Path=/payment/lb/**   #断言,路径相匹配的进行路由
+
+eureka:
+  instance:
+    hostname: cloud-gateway-service
+  client:
+    service-url:
+      register-with-eureka: true
+      fetch-registry: true
+      defaultZone: http://eureka7001.com:7001/eureka
+```
+
+9527 端口就配置为 8001 端口的两个访问路径的网关
 
 
+
+方式二：在 IOC 中注入网关类
+
+```java
+@Configuration
+public class MyGateWayConfig {
+
+    @Bean
+    public RouteLocator consumerRouteLocator(RouteLocatorBuilder routeLocatorBuilder) {
+        RouteLocatorBuilder.Builder routes = routeLocatorBuilder.routes();
+		
+        routes.route("path_route_taro", r -> r.path("/guonei").uri("http://news.baidu.com/guonei")).build();
+
+        return routes.build();
+    }
+}
+```
+
+
+
+## 动态路由配置
+
+网关 yml 配置
+
+```yml
+server:
+  port: 9527
+spring:
+  application:
+    name: cloud-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true  #开启从注册中心动态创建路由的功能，利用微服务名进行路由
+      routes:
+        - id: payment_routh #路由的ID，没有固定规则但要求唯一，建议配合服务名
+          #uri: http://localhost:8001 匹配后提供服务的路由地址
+          uri: lb://CLOUD-PAYMENT-SERVICE
+          predicates:
+            - Path=/payment/get/**   #断言,路径相匹配的进行路由
+
+        - id: payment_routh2
+          #uri: http://localhost:8001 匹配后提供服务的路由地址
+          uri: lb://CLOUD-PAYMENT-SERVICE
+          predicates:
+            - Path=/payment/lb/**   #断言,路径相匹配的进行路由
+
+
+eureka:
+  instance:
+    hostname: cloud-gateway-service
+  client:
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka
+    register-with-eureka: true
+    fetch-registry: true
+```
+
+
+
+## 常用的 Predicate
+
+```yml
+server:
+  port: 9527
+spring:
+  application:
+    name: cloud-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true  #开启从注册中心动态创建路由的功能，利用微服务名进行路由
+      routes:
+        - id: payment_routh #路由的ID，没有固定规则但要求唯一，建议配合服务名
+          #uri: http://localhost:8001   #匹配后提供服务的路由地址
+          uri: lb://cloud-payment-service
+          predicates:
+            - Path=/payment/get/**   #断言,路径相匹配的进行路由
+ 
+        - id: payment_routh2
+          #uri: http://localhost:8001   #匹配后提供服务的路由地址
+          uri: lb://cloud-payment-service
+          predicates:
+            - Path=/payment/lb/**   #断言,路径相匹配的进行路由
+            #- After=2020-03-08T10:59:34.102+08:00[Asia/Shanghai]
+            #- Cookie=username,zhangshuai #并且Cookie是username=zhangshuai才能访问
+            #- Header=X-Request-Id, \d+ #请求头中要有X-Request-Id属性并且值为整数的正则表达式
+            #- Host=**.atguigu.com
+            #- Method=GET
+            #- Query=username, \d+ #要有参数名称并且是正整数才能路由
+ 
+ 
+eureka:
+  instance:
+    hostname: cloud-gateway-service
+  client:
+    service-url:
+      register-with-eureka: true
+      fetch-registry: true
+      defaultZone: http://eureka7001.com:7001/eureka
+ 
+
+```
+
+
+
+## 自定义的 Filter
+
+p73
 
 
 
