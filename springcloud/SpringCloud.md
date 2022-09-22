@@ -1264,7 +1264,49 @@ public String paymentCircuitBreaker(@PathVariable("id") Integer id){
 
 
 
+## hystrix 的图形化微服务监控界面
 
+pom 添加
+
+```xml
+<!--新增hystrix dashboard-->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-hystrix-dashboard</artifactId>
+</dependency>
+```
+
+主启动类添加激活监控功能的注解
+
+```java
+@SpringBootApplication
+@EnableHystrixDashboard //开启 hystrix 的图形化监控界面
+public class HystrixDashBoardMain9001 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(HystrixDashBoardMain9001.class, args);
+    }
+     
+    /**
+     * 此配置是为了服务监控而配置，与服务容错本身无关，是 SpringCloud 升级后的坑
+     * ServletRegistrationBean 因为 SpringBoot 的默认路径不是 "/hystrix.stream"，
+     * 只要在自己的项目配置下面的servlet就可以
+  
+     */
+    @Bean
+    public ServletRegistrationBean getServlet(){
+        HystrixMetricsStreamServlet streamServlet = new HystrixMetricsStreamServlet();
+        ServletRegistrationBean registrationBean = new ServletRegistrationBean(streamServlet);
+        registrationBean.setLoadOnStartup(1);
+        registrationBean.addUrlMappings("/hystrix.stream");
+        registrationBean.setName("HystrixMetricsStreamServlet");
+        return registrationBean;
+    }
+
+}
+```
+
+http://localhost:9001/hystrix 访问监控页面
 
 
 
