@@ -1,0 +1,18 @@
+server:
+  port: 3344
+spring:
+  application:
+    name: cloud-config-center
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/Taro2021/springcloud-config.git
+          search-paths:
+            - springcloud-config
+        default-label: main
+
+eureka:
+  client:
+    service-url:
+      defaultZone:  http://localhost:7001/eureka

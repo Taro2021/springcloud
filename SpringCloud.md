@@ -1504,15 +1504,192 @@ public class MyLogGateWayFilter implements GlobalFilter, Ordered {
 
 # SpringCloud Config
 
+![image-20220925211703920](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220925211703920.png)
+
+[SpringCloud_Config 官方文档](https://cloud.spring.io/spring-cloud-static/spring-cloud-config/2.2.1.RELEASE/reference/html/)
+
+## Server
+
+pom 添加依赖
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-config-server</artifactId>
+</dependency>
+```
+
+yml 配置
+
+```yml
+server:
+  port: 3344
+spring:
+  application:
+    name: cloud-config-center
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/Taro2021/springcloud-config.git
+          search-paths:
+            - springcloud-config
+        default-label: main #默认分支
+
+eureka:
+  client:
+    service-url:
+      defaultZone:  http://localhost:7001/eureka
+```
+
+主启动类
+
+```java
+//port 3344
+@SpringBootApplication
+@EnableConfigServer
+@EnableEurekaClient
+public class ConfigCenterMain3344 {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ConfigCenterMain3344.class, args);
+    }
+}
+```
+
+![image-20220925212116336](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220925212116336.png)
+
+**配置读取规则**
+
+```
+/{label}/{application}-{profile}.yml
+/{application}-{profile}.yml
+/{application}-{profile}[/{label}]
+```
 
 
 
+## client
+
+pom
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-config</artifactId>
+</dependency>
+```
+
+yml
+
+**需要配置 bootstrap.yml 替代 application.yml**
+
+![image-20220925214000463](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220925214000463.png)
+
+```yml
+server:
+  port: 3355
+
+spring:
+  application:
+    name: config-client
+  cloud:
+    config:
+      label: main  #分支
+      name: config #配置文件名
+      profile: dev #读取后缀名 main 分支上的 config-dev.yml
+      uri: http://localhost:3344 #配置
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka
+```
+
+
+
+controller
+
+```java
+//port 3355
+@RestController
+public class ConfigClientController {
+
+    @Value("${config.info}")
+    private String configInfo;
+
+    @GetMapping("/configInfo")
+    public String getConfigInfo() {
+        return configInfo;
+    }
+}
+```
+
+​	当前客户端，github 上的配置文件修改，配置中心 server 3344 会立刻响应修改，而客户端 3355 并不会，需要重启客户端才会获取修改的配置信息。
+
+​	因为我们编写的客户端的 controller 中，第一次启动了之后通过Value注入到私有变量中了,然后3355访问的接口的返回值是刚才的私有变量,这时 github 上面发生改变,但是3355中的那个变量的值已经被注入过了, 并不会再次注入而是直接返回已经注入的对象。
+
+
+
+## 客户端的动态刷新
+
+（手动挡）
+
+修改客户端
+
+pom
+
+```xml
+<!-- 引入监控模块（一般已经与 web 模块一同引入）-->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+```
+
+修改 yml 暴露监控端口
+
+```yml
+# 暴露端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+```
+
+controller 添加刷新注解
+
+```java
+@RestController
+@RefreshScope //刷新注解
+public class ConfigClientController {
+    
+    @Value("${config.info}")
+    private String configInfo;
+
+    @GetMapping("/configInfo")
+    public String getConfigInfo() {
+        return configInfo;
+    }
+}
+```
+
+​	!!!还需要向客户端发送一个刷新的 **post 请求 `http://localhost:3355/actuator/refresh`** 去向监控模块发送请求通知刷新。
+
+​	多个客户端只能逐个手动通知刷新。
 
 # SpringCloud Bus
 
+![image-20220927193530518](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220927193530518.png)
+
+![image-20220927193812226](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220927193812226.png)
 
 
 
+## RabbitMQ  配置
+
+1. 下载 erlang http://erlang.org/download/otp_win64_21.3.exe
+2. 
 
 
 
