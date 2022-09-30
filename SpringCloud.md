@@ -1684,30 +1684,142 @@ public class ConfigClientController {
 
 ![image-20220927193812226](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220927193812226.png)
 
-
+![image-20220930161145729](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220930161145729.png)
 
 ## RabbitMQ  配置
 
 1. 下载 erlang http://erlang.org/download/otp_win64_21.3.exe
-2. 
+
+### docker 部署 
+
+```shell
+ docker search rabbitmq:management #查看镜像版本
+ docker pull rabbitmq:management #拉取镜像
+ docker run -d -p 15672:15672  -p  5672:5672  -e RABBITMQ_DEFAULT_USER=admin -e RABBITMQ_DEFAULT_PASS=admin --name rabbitmq1 --hostname=rabbitmqhostone  rabbitmq:management #启动容器 设置端口映射，设置用户名，密码
+```
+
+图形化界面访问地址 ip:15672
+
+
+
+## SpringCloud bus 动态刷新全局广播
+
+消息总线通知的两种设计思想：
+
+1. 利用消息总线触发一个客户端/bus/refresh,而刷新所有客户端的配置
+
+   ![image-20220930154137712](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220930154137712.png)
+
+2. 利用消息总线触发一个服务端ConfigServer的/bus/refresh端点,而刷新所有客户端的配置（更加推荐）
+
+   ![image-20220930154214450](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220930154214450.png)
+
+
+
+**第二种架构更加的合理：**
+
+- 传染方式的架构打破了微服务的职责单一性，因为微服务本身是业务模块，它本不应该承担配置刷新职责
+- 传染方式破坏了微服务各节点的对等性
+- 传染方式有一定的局限性。例如，微服务在迁移时，它的网络地址常常会发生变化，此时如果想要做到自动刷新，那就会增加更多的修改
+
+
+
+### 配置中心服务端添加消息总线的支持
+
+pom
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-bus-amqp</artifactId>
+</dependency>
+```
+
+yml
+
+```yml
+server:
+  port: 3344
+spring:
+  application:
+    name: cloud-config-center
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/Taro2021/springcloud-config.git
+          search-paths:
+            - springcloud-config
+        default-label: main
+  #rabbitMQ 相关配置
+  rabbitmq:
+    host: 121.199.78.94
+    port: 5672
+    username: admin
+    password: admin
+
+management:
+  endpoints: #暴露 bus 刷新配置的端点
+    web:
+      exposure:
+        include: 'bus-refresh'
+
+eureka:
+  client:
+    service-url:
+      defaultZone:  http://localhost:7001/eureka
+```
+
+
+
+### 客户端添加总线支持
+
+pom
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-bus-amqp</artifactId>
+</dependency>
+```
+
+yml 添加 rabbitMQ 配置信息
+
+```yml
+  rabbitmq:
+    host: 121.199.78.94
+    port: 5672
+    username: admin
+    password: admin
+```
+
+
+
+### 向配置中心服务端发出总线刷新请求
+
+```
+POST http://localhost:3344/actuator/bus-refresh
+```
+
+一处刷新处处生效
+
+
+
+## SpringCloud bus 动态刷新定点通知
+
+​	指定具体某一个实例生效而不是全部
+
+​	公式：`http://配置中心ip:配置中心的端口号/actuator/bus-refresh/{destination}`
 
 
 
 
 
+# SpringCloud Stream
 
+​	消息驱动：屏蔽底层消息中间件的差异，降低切换版本，统一消息的编程模型
 
-
-
-
-
-
-
-
-
-
-
-
+![image-20220930163551497](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220930163551497.png)
 
 
 

@@ -11,6 +11,17 @@ spring:
           search-paths:
             - springcloud-config
         default-label: main
+  rabbitmq:
+    host: 121.199.78.94
+    port: 5672
+    username: admin
+    password: admin
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: 'bus-refresh'
 
 eureka:
   client:
