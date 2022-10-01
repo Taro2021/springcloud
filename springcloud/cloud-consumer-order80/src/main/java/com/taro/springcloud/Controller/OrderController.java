@@ -70,4 +70,9 @@ public class OrderController {
         URI uri = myLB.instance(instances).getUri();
         return restTemplate.getForObject(uri + "/payment/lb", String.class);
     }
+
+    @GetMapping("/zipkin")
+    public String consumerZipkin(){
+        return restTemplate.getForObject("http://localhost:8001" + "/payment/zipkin/", String.class);
+    }
 }

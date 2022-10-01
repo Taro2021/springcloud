@@ -10,6 +10,11 @@ spring:
     url: jdbc:mysql://121.199.78.94:3306/db2022?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&useSSL=false&allowPublicKeyRetrieval=true&useSSL=false
     username: root
     password: kN7fluCGcm5W8oV6wkj7
+  zipkin:
+    base-url: http://localhost:9411
+  sleuth:
+    sampler:
+      probability: 1
 
 eureka:
   client:

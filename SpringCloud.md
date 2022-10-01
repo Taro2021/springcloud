@@ -1991,6 +1991,231 @@ public class ConsumerController {
 
 分布式请求链路追踪
 
+https://github.com/spring-cloud/spring-cloud-sleuth
+
+Spring Cloud Sleuth提供了一套完整的服务跟踪的解决方案，在分布式系统中提供追踪解决方案并且兼容支持了zipkin。
+
+
+
+## zipkin 链路追踪
+
+SpringCloud从F版起已不需要自己构建 Zipkin server了，只需要调用jar包即可
+
+https://dl.bintray.com/openzipkin/maven/io/zipkin/java/zipkin-server/
+
+启动 zipkin `java -jar zipkin-server-2.14.1-exec.jar`
+
+http://localhost:9411/zipkin/
+
+![image-20221001094913192](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221001094913192.png)
+
+
+
+## 被监控微服务
+
+pom
+
+```xml
+<!--包含了sleuth+zipkin-->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-zipkin</artifactId>
+</dependency>
+```
+
+yml 添加配置
+
+```yml
+spring:
+  zipkin:
+    base-url: http://localhost:9411
+  sleuth:
+    sampler:
+      probability: 1 #采样率介于 0 到 1 之间，1 表示全部采集
+```
+
+
+
+provider controller
+
+```java
+@GetMapping("/zipkin")
+public String paymentZipkin(){
+    return "I'm payementZipkin server fall back!";
+}
+```
+
+consumer controller
+
+```java
+@GetMapping("/zipkin")
+public String consumerZipkin(){
+    return restTemplate.getForObject("http://localhost:8001" + "/payment/zipkin/", String.class);
+}
+```
+
+![image-20221001101428610](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221001101428610.png)
+
+---
+
+
+
+
+
+# SpringCloud Alibaba
+
+## 主要功能
+
+* **服务限流降级**：默认支持 WebServlet、WebFlux、OpenFeign、RestTemplate、Spring Cloud Gateway、Zuul、Dubbo 和 RocketMQ 限流降级功能的接入，可以在运行时通过控制台实时修改限流降级规则，还支持查看限流降级 Metrics 监控。
+* **服务注册与发现**：适配 Spring Cloud 服务注册与发现标准，默认集成了 Ribbon 的支持。
+* **分布式配置管理**：支持分布式系统中的外部化配置，配置更改时自动刷新。
+* **消息驱动能力**：基于 Spring Cloud Stream 为微服务应用构建消息驱动能力。
+* **分布式事务**：使用 @GlobalTransactional 注解， 高效并且对业务零侵入地解决分布式事务问题。
+* **阿里云对象存储**：阿里云提供的海量、安全、低成本、高可靠的云存储服务。支持在任何应用、任何时间、任何地点存储和访问任意类型的数据。
+* **分布式任务调度**：提供秒级、精准、高可靠、高可用的定时（基于 Cron 表达式）任务调度服务。同时提供分布式的任务执行模型，如网格任务。网格任务支持海量子任务均匀分配到所有 Worker（schedulerx-client）上执行。
+* **阿里云短信服务**：覆盖全球的短信服务，友好、高效、智能的互联化通讯能力，帮助企业迅速搭建客户触达通道。
+
+
+更多功能请参考 [Roadmap](https://github.com/alibaba/spring-cloud-alibaba/blob/master/Roadmap-zh.md)。
+
+https://github.com/alibaba/spring-cloud-alibaba/blob/master/README-zh.md
+
+https://spring.io/projects/spring-cloud-alibaba#overview
+
+
+
+父 pom dependencyManagement 依赖管理添加 
+
+```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+            <version>2.2.9.RELEASE</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+```
+
+# Nacos 
+
+服务注册中心 + 配置中心
+
+[nacos](https://nacos.io/zh-cn/)
+
+docker 配置 nacos-server 
+
+- 镜像： `docker pull nacos/nacos-server`
+- 容器启动：`docker run -d --name nacos -p 8848:8848 -e PREFER_HOST_MODE=hostname -e MODE=standalone nacos/nacos-server`
+- nacos所有元数据都会保存在容器内部。倘若容器迁移则nacos元数据则不复存在，所以通常我们通常会将nacos元数据保存在mysql中。这里仅学习 nacos 没有进行修改。
+
+
+
+## 基于 Nacos 的微服务
+
+pom 添加依赖
+
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+</dependency>
+```
+
+yml
+
+```yml
+server:
+  port: 9001
+
+spring:
+  application:
+    name: nacos-payment-provider
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 121.199.78.94:8848 #配置Nacos地址
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+```
+
+主启动类
+
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class Payment9001 {
+    public static void main(String[] args) {
+        SpringApplication.run(Payment9001.class, args);
+    }
+}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
