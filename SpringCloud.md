@@ -2114,7 +2114,7 @@ docker 配置 nacos-server
 
 
 
-## 基于 Nacos 的微服务
+## 基于 Nacos 的微服务注册
 
 pom 添加依赖
 
@@ -2158,25 +2158,113 @@ public class Payment9001 {
 }
 ```
 
+​	nacos 集成了ribbon 自带负载均衡组件 `@LoadBalanced`，记得要在 IOC 容器中注册 RestTemplate 的 bean。
+
+​	在 Spring Boot 1.3版本中，会默认提供一个[RestTemplate](https://so.csdn.net/so/search?q=RestTemplate&spm=1001.2101.3001.7020)的实例Bean，而在 Spring Boot 1.4以及以后的版本中，这个默认的bean不再提供了，我们需要在Application启动时，手动创建一个RestTemplate的配置。
 
 
 
 
 
+## Nacos支持AP和CP模式的切换
+
+![image-20221001153748597](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221001153748597.png)
 
 
 
+## Nacos 作为配置中心
+
+### client
+
+引入依赖
+
+```xml
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+</dependency>
+<!-- bootstrap.yml不生效问题。2020版本之后需要配置bootstrap.yml生效，添加一下依赖即可 -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-bootstrap</artifactId>
+</dependency>
+```
+
+需要配置两个 yml 配置文件
+
+bootstrap.yml
+
+```yml
+server:
+  port: 3377
+
+spring:
+  application:
+    name: nacos-config-client
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 121.199.78.94:8848 #服务注册中心地址
+      config:
+        server-addr: 121.199.78.94:8848 #配置中心地址
+        file-extension: yaml #指定配置文件格式
+```
+
+application.yml
+
+```yml
+spring:
+  profiles:
+    active: dev
+```
+
+主启动类
+
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class NacosConfigClient3377 {
+    public static void main(String[] args) {
+        SpringApplication.run(NacosConfigClient3377.class, args);
+    }
+}
+```
+
+controller
+
+```java
+@RestController
+@RefreshScope //配置实时更新
+public class NacosConfigClientController {
+
+    @Value("${config.info}")
+    private String configInfo;
+
+    @GetMapping("/config/info")
+    public String getConfigInfo(){
+        return configInfo;
+    }
+}
+```
 
 
 
+### Nacos-server
+
+在 Nacos Spring Cloud 中，`dataId` 的完整格式如下：==!!!神坑注意格式一点不能错==
+
+```
+${spring.application.name}-${spring.profiles.active}.${file-extension}
+nacos-config-client-dev.yaml
+```
+
+![image-20221001160748542](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221001160748542.png)
+
+![image-20221001172242555](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221001172242555.png)
 
 
 
-
-
-
-
-
+101
 
 
 
