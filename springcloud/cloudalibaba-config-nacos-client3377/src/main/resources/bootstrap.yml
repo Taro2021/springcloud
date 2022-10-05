@@ -11,3 +11,5 @@ spring:
       config:
         server-addr: 121.199.78.94:8848 #配置中心地址
         file-extension: yaml #指定配置文件格式
+        group: DEV_GROUP #配置组信息
+        namespace: be16709e-08b4-43d5-8555-fb64628ed302 #配置命名空间
