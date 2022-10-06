@@ -1002,6 +1002,8 @@ logging:
 
 # Hystrix 服务降级
 
+豪猪
+
 ![image-20220921131419786](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20220921131419786.png)
 
 https://github.com/Netflix/Hystrix/wiki/How-To-Use
@@ -1100,7 +1102,7 @@ public String getPayment_TimeOutHandler(Long id) {
 }
 ```
 
-主启动类上激活 `@EnableCircuitBreaker`
+主启动类上激活 `@EnableCircuitBreaker` //断路器
 
 
 
@@ -1265,6 +1267,8 @@ public String paymentCircuitBreaker(@PathVariable("id") Integer id){
 
 
 ## hystrix 的图形化微服务监控界面
+
+需要自己编写一个模块来提供 hystrix 的图形化界面服务
 
 pom 添加
 
@@ -2614,21 +2618,302 @@ nginx 网关 + nocas 集群部署暂时先跳过
 
 流量控制，熔断降级
 
+https://github.com/alibaba/Sentinel/releases
+
+![image-20221006105450155](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006105450155.png)
+
+`java -jar sentinel-dashboard-1.7.0.jar ` 默认使用 8080 端口 http://localhost:8080
+
+默认用户民密码：sentinel
+
+docker :
+
+```shell
+docker pull bladex/sentinel-dashboard
+docker run -d -p 8858:8858 --name sentinel image_id
+```
+
+
+
+## 测试
+
+### 启动 nacos
+
+### 新建模块
+
+#### pom
+
+```xml
+<!-- 添加依赖 -->
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>com.alibaba.csp</groupId>
+    <artifactId>sentinel-datasource-nacos</artifactId>
+</dependency>
+
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+</dependency>
+```
+
+#### yml
+
+```yml
+server:
+  port: 8401
+
+spring:
+  application:
+    name: cloudalibaba-sentinel-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 121.199.78.11:8848
+    sentinel:
+      transport:
+        dashboard: localhost:8080 #sentinel监控与微服务在同一个内网中
+        port: 8719 #sentinel 后台和我们微服务通信的端口
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+```
+
+#### 主启动类
+
+```java
+@SpringBootApplication
+@EnableDiscoveryClient
+public class SentinelService8401 {
+    public static void main(String[] args) {
+        SpringApplication.run(SentinelService8401.class,args);
+    }
+}
+```
+
+#### controller
+
+```java
+@RestController
+public class FlowLimitController {
+
+    @GetMapping("/test1")
+    public String test1(){
+        return "test1";
+    }
+
+    @GetMapping("test2")
+    public String test2(){
+        return "test2";
+    }
+}
+```
+
+
+
+## @SentinelResource
+
+![](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006163425237.png)
+
+
+
+### 按资源名限流
+
+1. 在方法上配置 @SentinelResource 注解 value 值为资源名，blockHandler 为阻塞降级的备用方法，只关 senrinel 配置的规则下的阻塞，不管运行异常，方法需要有形参 阻塞异常
+
+   ```java
+   @GetMapping("/test3")
+       @SentinelResource(value = "test3", blockHandler = "dealTest3")
+      public String test3(){
+           log.info("测试降级规则，异常比例"  );
+           int err = 1 / 0;
+           return "test3";
+       }
+       //fallback 备用方法
+       public String dealTest3(BlockException exception){
+           return "test3 fallback method";
+       }
+   ```
+
+2. 在各类规则中的资源栏中填写 @SentinelResource 注解 value 值资源名，这样才能调用自定义的方法
+
+   ![image-20221006165632490](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006165632490.png)
+
+   ![image-20221006165645070](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006165645070.png)
+
+
+
+### 按 URL 限流
+
+普通配置，走默认限流备用方法，不会使用自定义方法
+
+
+
+### 解耦
+
+全局的阻塞控制类
+
+```java
+public class CustomerBlockHandler {
+
+    public static CommonResult handlerException1(BlockException exception) {
+        return new CommonResult(444, "global block exception handler1");
+    }
+
+    public static CommonResult handlerException2(BlockException exception) {
+        return new CommonResult(444, "global block exception handler2");
+    }
+}
+```
+
+controller
+
+```java
+    @GetMapping("/limit/customerBlockHandler")
+    @SentinelResource(value = "customerBlockHandler", 
+            blockHandlerClass = CustomerBlockHandler.class, 
+            blockHandler = "handlerException1")
+    public CommonResult customerBlockHandler(){
+        return new CommonResult(200, "success", new Payment(2022L, "serial106"));
+    }
+```
 
 
 
 
 
+## 流控规则
+
+### 流控模式
+
+![image-20221006141326054](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006141326054.png)
+
+或者
+
+![image-20221006141504869](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006141504869.png)
+
+![image-20221006141813675](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006141813675.png)
+
+超过设置每秒请求阈值，被 sentinel 阻塞
+
+![image-20221006142109550](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006142109550.png)
+
+[logs (sentinelguard.io)](https://sentinelguard.io/zh-cn/docs/logs.html)
+
+- 直接：只与自己相关
+- 关联：A 关联 B，B 不行了，A 也停止
+- 链路：多个请求调用了同一个微服务，入口资源阻塞，全部阻塞
 
 
 
 
 
+### 流控效果
+
+#### 快速失败：
+
+​	到达阈值，该秒拒绝所有访问请求
+
+#### 关联模式 + 冷启动
+
+![image-20221006152213769](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006152213769.png)
+
+默认认的 coldFactor = 3 即在设置的预热时间 5 秒内阈值为 threshold / 3 ，经过预热时长逐渐升至设定的 QPS 阈值
+
+![image-20221006153118994](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006153118994.png)
+
+![image-20221006153129313](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006153129313.png)
+
+#### 排队等待
+
+匀速排队，阈值必须设置为QPS
+
+![image-20221006153504252](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006153504252.png)
+
+---
 
 
 
+## 降级规则
+
+![image-20221006155237880](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006155237880.png)
+
+- RT
+
+  ![image-20221006155313870](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006155313870.png)
+
+- 异常比例
+
+  ![image-20221006155347872](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006155347872.png)
+  
+- 异常数
+  
+  ![image-20221006155434142](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006155434142.png)
+  
+  
+  
+  
+  
+
+## ==热点规则==
+
+https://github.com/alibaba/Sentinel/wiki/热点参数限流
+
+配置方法
+
+```java
+    @GetMapping("/testHotKey")
+    @SentinelResource(value = "testHotKey", blockHandler = "dealTestHotKey")
+    public String testHotKey(@RequestParam(value = "p1", required = false) String p1,
+                             @RequestParam(value = "p2", required = false) String p2){
+        return "test hot key";
+    }
+
+    public String dealTestHotKey(String p1, String p2, BlockException exception){
+        return "fallback method";
+    }
+```
 
 
+
+### 普通配置
+
+配置热点规则
+
+![image-20221006171756704](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006171756704.png)
+
+error：http://localhost:8401/testHotKey?p1=1
+
+error：http://localhost:8401/testHotKey?p1=1&p2=1
+
+right：http://localhost:8401/testHotKey?p2=1
+
+
+
+### 参数例外项
+
+例如：我们期望p1参数当它是某个特殊值时，它的限流值和平时不一样，配置当p1的值等于5时，它的阈值可以达到200
+
+![image-20221006172213236](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006172213236.png)
+
+right：http://localhost:8401/testHotKey?p1=5
+
+
+
+## 系统规则
+
+![image-20221006173707729](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006173707729.png)
+
+
+
+## 服务熔断
 
 
 
