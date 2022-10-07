@@ -2728,21 +2728,27 @@ public class FlowLimitController {
 
 1. 在方法上配置 @SentinelResource 注解 value 值为资源名，blockHandler 为阻塞降级的备用方法，只关 senrinel 配置的规则下的阻塞，不管运行异常，方法需要有形参 阻塞异常
 
+2. fallback 来处理运行时异常的方法降级
+
    ```java
    @GetMapping("/test3")
-       @SentinelResource(value = "test3", blockHandler = "dealTest3")
+       @SentinelResource(value = "test3", blockHandler = "dealTest3", fallback = "handlerFallback")
       public String test3(){
            log.info("测试降级规则，异常比例"  );
            int err = 1 / 0;
            return "test3";
        }
-       //fallback 备用方法
+       //阻塞控制方法
        public String dealTest3(BlockException exception){
+           return "test3 blockHandler method";
+       }
+   	//服务降级 fallback
+   	public String handlerFallback(Throwable e){
            return "test3 fallback method";
        }
    ```
 
-2. 在各类规则中的资源栏中填写 @SentinelResource 注解 value 值资源名，这样才能调用自定义的方法
+3. 在各类规则中的资源栏中填写 @SentinelResource 注解 value 值资源名，这样才能调用自定义的方法
 
    ![image-20221006165632490](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221006165632490.png)
 
@@ -2914,6 +2920,271 @@ right：http://localhost:8401/testHotKey?p1=5
 
 
 ## 服务熔断
+
+sentinel整合ribbon+openFeign+fallback
+
+和之前一样，是本地的负载均衡
+
+---
+
+
+
+### Ribbon 
+
+**consumer**
+
+在配置类中注册 RestTemplate 加上负载均衡注解
+
+```java
+@Configuration
+public class ApplicationContextConfig {
+
+    @Bean
+    @LoadBalanced
+    public RestTemplate getRestTemplate(){
+        return new RestTemplate();
+    }
+}
+```
+
+controller
+
+```java
+@RestController
+@RequestMapping("/consumer")
+@Slf4j
+public class CircleBreakerController {
+
+    public static final String SERVICE_URL = "http://nacos-payment-provider";
+
+    @Resource
+    private RestTemplate restTemplate;
+
+    @RequestMapping("/consumer/fallback/{id}")
+    //@SentinelResource(value = "fallback") //没有配置
+    //@SentinelResource(value = "fallback",fallback = "handlerFallback") //fallback只负责业务异常
+    //@SentinelResource(value = "fallback",blockHandler = "blockHandler") //blockHandler只负责sentinel控制台配置违规
+    //exceptionsToIgnore 属性忽略某个异常
+    @SentinelResource(value = "fallback",fallback = "handlerFallback",blockHandler = "blockHandler",
+            exceptionsToIgnore = {IllegalArgumentException.class})
+    public CommonResult<Payment> fallback(@PathVariable Long id) {
+        CommonResult<Payment> result = restTemplate.getForObject(SERVICE_URL + "/payment/"+id, CommonResult.class,id);
+
+        if (id == 4) {
+            throw new IllegalArgumentException ("IllegalArgumentException,非法参数异常....");
+        }else if (result.getData() == null) {
+            throw new NullPointerException ("NullPointerException,该ID没有对应记录,空指针异常");
+        }
+
+        return result;
+    }
+
+    //fallback
+    public CommonResult handlerFallback(@PathVariable Long id,Throwable e) {
+        Payment payment = new Payment(id,"null");
+        return new CommonResult<>(444,"兜底异常handlerFallback,exception内容  "+e.getMessage(),payment);
+    }
+
+    //blockHandler
+    public CommonResult blockHandler(@PathVariable Long id, BlockException blockException) {
+        Payment payment = new Payment(id,"null");
+        return new CommonResult<>(445,"blockHandler-sentinel限流,无此流水: blockException  "+blockException.getMessage(),payment);
+    }
+
+}
+```
+
+
+
+
+
+### OpenFeign
+
+pom
+
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+```
+
+yml 添加激活sentinel 对 feign 的支持配置信息
+
+```yml
+feign:
+  sentinel:
+    enabled: true
+```
+
+主启动类添加 @EnableFeignClients
+
+service 添加 FeignClient 注解
+
+```java
+@FeignClient(value = "nacos-payment-provider", fallback = PaymentFallbackService.class)
+public interface PaymentService {
+    //openFeign 来完成 RestTempalte 的转发请求
+    @GetMapping("/payment/{id}")
+    public CommonResult<Payment> paymentQuery(@PathVariable("id") Long id);
+}
+```
+
+实现类，编写降级方法
+
+```java
+@Service
+public class PaymentFallbackService implements PaymentService {
+    @Override
+    public CommonResult<Payment> paymentQuery(Long id) {
+        return new CommonResult<>(44444,"PaymentFallbackService",new Payment(id,"errorSerial"));
+    }
+}
+```
+
+controller
+
+```java
+	@Resource
+    private PaymentService paymentService;
+
+    @GetMapping("/payment/{id}")
+	//openFeign 来处理服务降级，同时配置 sentinel 的阻塞方法
+    @SentinelResource(value = "blockHandler", blockHandler = "blockHandler")
+    public CommonResult<Payment> paymentOpenFeign(@PathVariable("id") Long id) {
+        return paymentService.paymentQuery(id);
+    }
+
+	 //blockHandler
+    public CommonResult blockHandler(@PathVariable  Long id, BlockException blockException) {
+        Payment payment = new Payment(id,"null");
+        return new CommonResult<>(445,"blockHandler-sentinel限流,无此流水: blockException  "+blockException.getMessage(),payment);
+    }
+```
+
+---
+
+
+
+## 规则持久化
+
+将限流配置规则持久化进Nacos保存，只要刷新8401某个rest地址，sentinel控制台的流控规则就能看到，只要Nacos里面的配置不删除，针对8401上Sentinel上的流控规则持续有效
+
+在需要持久化规则的微服务中添加 pom 依赖
+
+```xml
+<dependency>
+    <groupId>com.alibaba.csp</groupId>
+    <artifactId>sentinel-datasource-nacos</artifactId>
+</dependency>
+```
+
+yml
+
+```yml
+server:
+  port: 8401
+
+spring:
+  application:
+    name: cloudalibaba-sentinel-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 121.199.78.94:8848
+    sentinel:
+      transport:
+        dashboard: localhost:8080
+        port: 8719
+      datasource: #配置sentinel 规则持久化的数据源
+        ds1:
+          nacos:
+            server-addr:  121.199.78.94:8848
+            dataId: cloudalibaba-sentinel-service
+            data-type: json
+            rule-type: flow
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    sentinel:
+      enabled: true
+```
+
+在 nacos 中添加配置
+
+![image-20221007152349243](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221007152349243.png)
+
+```json
+[
+    {
+         "resource": "/retaLimit/byUrl",
+         "limitApp": "default",
+         "grade":   1,
+         "count":   1,
+         "strategy": 0,
+         "controlBehavior": 0,
+         "clusterMode": false    
+    }
+]
+```
+
+![image-20221007152421987](https://taro-note-pic.oss-cn-hangzhou.aliyuncs.com/image-20221007152421987.png)
+
+---
+
+
+
+# Seata
+
+分布式事务处理
+
+http://seata.io/zh-cn/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
